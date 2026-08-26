@@ -2,13 +2,13 @@ use crate::PropertyTrack;
 use gpui::*;
 use std::time::Instant;
 
-pub struct MotionElement {
+pub struct AnimotionElement {
     id: ElementId,
     child: Option<Div>,
     tracks: Vec<Box<dyn PropertyTrack>>,
 }
 
-impl ParentElement for MotionElement {
+impl ParentElement for AnimotionElement {
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
         if let Some(child) = self.child.as_mut() {
             child.extend(elements);
@@ -16,20 +16,20 @@ impl ParentElement for MotionElement {
     }
 }
 
-impl IntoElement for MotionElement {
+impl IntoElement for AnimotionElement {
     type Element = Self;
     fn into_element(self) -> Self::Element {
         self
     }
 }
 
-pub trait MotionExt {
-    fn motion(self, id: impl Into<ElementId>, tracks: Vec<Box<dyn PropertyTrack>>) -> MotionElement;
+pub trait AnimotionExt {
+    fn animotion(self, id: impl Into<ElementId>, tracks: Vec<Box<dyn PropertyTrack>>) -> AnimotionElement;
 }
 
-impl MotionExt for Div {
-    fn motion(self, id: impl Into<ElementId>, tracks: Vec<Box<dyn PropertyTrack>>) -> MotionElement {
-        MotionElement {
+impl AnimotionExt for Div {
+    fn animotion(self, id: impl Into<ElementId>, tracks: Vec<Box<dyn PropertyTrack>>) -> AnimotionElement {
+        AnimotionElement {
             id: id.into(),
             child: Some(self),
             tracks,
@@ -37,7 +37,7 @@ impl MotionExt for Div {
     }
 }
 
-impl Element for MotionElement {
+impl Element for AnimotionElement {
     type RequestLayoutState = AnyElement;
     type PrepaintState = ();
 

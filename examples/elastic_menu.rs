@@ -35,7 +35,7 @@ impl Render for ElasticMenuView {
                             .flex()
                             .items_center()
                             .child(label)
-                            .motion(
+                            .animotion(
                                 label,
                                 all((
                                     // Slide in from left with staggered entrance

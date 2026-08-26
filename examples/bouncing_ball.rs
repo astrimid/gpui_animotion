@@ -24,7 +24,7 @@ impl Render for BouncingBallView {
                         div()
                             .absolute()
                             .rounded_full()
-                            .motion("bouncing_ball", all((
+                            .animotion("bouncing_ball", all((
                                 prop(
                                     tween(40.0, 300.0, 0.8).tween(40.0, 0.8),
                                     |el, y| el.top(px(y)),

@@ -24,7 +24,7 @@ impl Render for ToastStackView {
                     .justify_between()
                     .border_1()
                     .border_color(hsla(0.0, 0.0, 1.0, 0.1))
-                    .motion(
+                    .animotion(
                         "toast_banner",
                         all((
                             // Slide down from top, hold, and retract

@@ -43,19 +43,19 @@ impl Render for RadarPulseView {
                         div()
                             .absolute()
                             .rounded_full()
-                            .motion("pulse_1", ring(0.0)),
+                            .animotion("pulse_1", ring(0.0)),
                     )
                     .child(
                         div()
                             .absolute()
                             .rounded_full()
-                            .motion("pulse_2", ring(0.6)),
+                            .animotion("pulse_2", ring(0.6)),
                     )
                     .child(
                         div()
                             .absolute()
                             .rounded_full()
-                            .motion("pulse_3", ring(1.2)),
+                            .animotion("pulse_3", ring(1.2)),
                     )
                     .child(
                         // Center Core Node

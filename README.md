@@ -46,7 +46,7 @@ cargo run --example bouncing_ball
 
 ## Basic Usage
 
-Attach `.animate()` (or `.animotion()`) to any GPUI `Div` in your `render` method:
+Attach `.animotion()` to any GPUI `Div` in your `render` method:
 
 ```rust
 use gpui::*;
@@ -57,7 +57,7 @@ fn render_bouncing_ball() -> impl IntoElement {
         .absolute()
         .size_12()
         .rounded_full()
-        .animate(
+        .animotion(
             "bouncing_ball",
             all((
                 // Y-axis translation: Bounce down and back up
@@ -104,7 +104,7 @@ prop(
 Orchestrate execution flow across properties or elements:
 
 * **`all(...)`**: Executes wrapped animations in **parallel**.
-* **`seq(...)`**: Executes wrapped animations **sequentially**.
+* TODO **`seq(...)`**: Executes wrapped animations **sequentially**.
 
 ```rust
 // Run two property animations simultaneously

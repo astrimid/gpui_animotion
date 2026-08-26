@@ -24,7 +24,7 @@ impl Render for HoverCardDemo {
                     .flex()
                     .flex_col()
                     .justify_between()
-                    .motion("card_container", all((
+                    .animotion("card_container", all((
                         // Pulsing background gradient feel
                         prop(
                             tween(hsla(0.65, 0.4, 0.12, 1.0), hsla(0.75, 0.5, 0.18, 1.0), 2.0)
@@ -46,7 +46,7 @@ impl Render for HoverCardDemo {
                         div()
                             .size_12()
                             .rounded_lg()
-                            .motion("card_icon", all((
+                            .animotion("card_icon", all((
                                 prop(
                                     tween(hsla(0.55, 0.9, 0.6, 1.0), hsla(0.85, 0.9, 0.6, 1.0), 2.0)
                                         .tween(hsla(0.55, 0.9, 0.6, 1.0), 2.0),
