@@ -39,7 +39,7 @@ gpui_animotion = "0.1"
 Clone the repository and run the included example:
 
 ```bash
-git clone [https://github.com/astrimid/gpui_motion.git](https://github.com/astrimid/gpui_motion.git)
+git clone [https://github.com/astrimid/gpui_animotion.git](https://github.com/astrimid/gpui_animotion.git)
 cd gpui_motion
 cargo run --example bouncing_ball
 ```
