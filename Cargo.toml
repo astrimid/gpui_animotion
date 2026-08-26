@@ -1,0 +1,13 @@
+[package]
+name = "gpui_motion"
+version = "0.1.0"
+edition = "2024"
+description = "Declarative property animation engine for GPUI"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+gpui = { package = "gpui-unofficial", version = "1.16" }
+
+[dev-dependencies]
+gpui_platform = { package = "gpui-platform-gpui-unofficial", version = "1.16" }
+
