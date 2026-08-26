@@ -1,5 +1,5 @@
 [package]
-name = "gpui_motion"
+name = "gpui_animotion"
 version = "0.1.0"
 edition = "2024"
 description = "Declarative property animation engine for GPUI"
