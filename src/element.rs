@@ -8,6 +8,14 @@ pub struct MotionElement {
     tracks: Vec<Box<dyn PropertyTrack>>,
 }
 
+impl ParentElement for MotionElement {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        if let Some(child) = self.child.as_mut() {
+            child.extend(elements);
+        }
+    }
+}
+
 impl IntoElement for MotionElement {
     type Element = Self;
     fn into_element(self) -> Self::Element {

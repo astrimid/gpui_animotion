@@ -1,9 +1,11 @@
+mod shared;
+
 use gpui::*;
 use gpui_motion::*;
 
-struct MotionDemoView;
+struct BouncingBallView;
 
-impl Render for MotionDemoView {
+impl Render for BouncingBallView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
@@ -49,18 +51,22 @@ impl Render for MotionDemoView {
 }
 
 fn main() {
-    gpui_platform::application().run(move |cx: &mut App| {
-        let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds {
-                origin: Point::new(px(200.0), px(200.0)),
-                size: size(px(1000.0), px(800.0)),
-            })),
-            ..Default::default()
-        };
-
-        cx.open_window(options, move |_window, cx| {
-            cx.new(|_| MotionDemoView)
-        })
-        .unwrap();
-    });
+    shared::run("Bouncing Ball Example", |_, _| BouncingBallView);
 }
+
+//fn main() {
+//    gpui_platform::application().run(move |cx: &mut App| {
+//        let options = WindowOptions {
+//            window_bounds: Some(WindowBounds::Windowed(Bounds {
+//                origin: Point::new(px(200.0), px(200.0)),
+//                size: size(px(1000.0), px(800.0)),
+//            })),
+//            ..Default::default()
+//        };
+//
+//        cx.open_window(options, move |_window, cx| {
+//            cx.new(|_| MotionDemoView)
+//        })
+//        .unwrap();
+//    });
+//}
