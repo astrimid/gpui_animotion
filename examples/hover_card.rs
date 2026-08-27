@@ -1,6 +1,6 @@
 // examples/hover_card.rs
 use gpui::*;
-use gpui_motion::*;
+use gpui_animotion::*;
 
 struct HoverCardDemo;
 

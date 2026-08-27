@@ -1,7 +1,7 @@
 mod shared;
 
 use gpui::*;
-use gpui_motion::*;
+use gpui_animotion::*;
 
 struct BouncingBallView;
 
