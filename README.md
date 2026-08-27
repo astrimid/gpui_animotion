@@ -6,7 +6,7 @@
 
 A declarative, combinator-driven procedural animation engine for [GPUI](https://github.com/zed-industries/zed).
 
-Inspired by the procedural composition of tools like **Motion Canvas** and the timing orchestration of **GSAP**, `gpui_animotion` brings fine-grained timeline control directly to native Rust UI components.
+Inspired by the procedural composition of tools like **Motion Canvas** and the timing orchestration of **GSAP**, `gpui_animotion` brings fine-grained timeline control and physical simulations directly to native Rust UI components.
 
 ## Overview & Paradigm
 
@@ -15,14 +15,14 @@ UI animation libraries generally fall into two categories:
 1. **Implicit Layout Transitions:** Optimized for $A \to B$ state changes, but cumbersome when orchestrating multi-element scenes with strict timing dependencies.
 2. **Keyframe Timelines:** Highly controllable, but often decoupled from modern component-driven layout trees.
 
-`gpui_animotion` bridges this gap for GPUI by introducing **combinator-driven element animation**. Instead of managing raw frame ticks or maintaining imperative timeline controllers, you attach composable timing pipelines directly to standard GPUI `Div` elements using reactive property mappers and parallel or sequential combinators.
+`gpui_animotion` bridges this gap for GPUI by introducing **combinator-driven element animation**. Instead of managing raw frame ticks or maintaining imperative timeline controllers, you attach composable timing pipelines directly to standard GPUI elements using reactive property mappers and fluent animation combinators.
 
 ### Key Features
 
-* **Direct Element Binding:** Animate standard GPUI layout properties (`.top()`, `.bg()`, `.opacity()`, etc.) directly on `Div` instances.
-* **Combinator Composition:** Combine interpolations concurrently with `all(...)` or sequentially with `seq(...)`.
-* **Native Interpolation:** Built-in interpolators for native GPUI types including `Length`, `Hsla`, `f32`, `Pixels`, and colors.
-* **Zero Canvas Lock-In:** Works with standard GPUI views and elements—no special isolated 2D canvas context required.
+* **Direct Element Binding:** Animate standard GPUI layout properties, custom canvas properties, and reactive variables directly.
+* **Procedural Physics:** Built-in simulation tools like realistic gravity and bouncing trajectories.
+* **Fluent Chaining:** Easily compose complex sequences combining keyframe `.tween()` transitions and physics algorithms.
+* **Zero Canvas Lock-In:** Works seamlessly with standard GPUI views and layouts.
 
 ## Installation
 
@@ -31,7 +31,7 @@ Add `gpui_animotion` and `gpui` to your `Cargo.toml`:
 ```toml
 [dependencies]
 gpui = { package = "gpui-unofficial", version = "1.16" }
-gpui_animotion = "0.1"
+gpui_animotion = "0.2"
 ```
 
 ## Quickstart
@@ -39,14 +39,16 @@ gpui_animotion = "0.1"
 Clone the repository and run the included example:
 
 ```bash
-git clone [https://github.com/astrimid/gpui_animotion.git](https://github.com/astrimid/gpui_animotion.git)
-cd gpui_motion
-cargo run --example bouncing_ball
+git clone https://github.com/astrimid/gpui_animotion.git
+cd gpui_animotion
+cargo run --example many_shiny_balls
 ```
 
-## Basic Usage
+## Usage Examples
 
-Attach `.animotion()` to any GPUI `Div` in your `render` method:
+### 1. Simple Inline Animation (`.animotion`)
+
+For straightforward UI components, use `.animotion()` to declaratively map tweens directly onto standard `Div` attributes like position and color:
 
 ```rust
 use gpui::*;
@@ -74,46 +76,111 @@ fn render_bouncing_ball() -> impl IntoElement {
             )),
         )
 }
+```
 
+### 2. Advanced Physics & Clips (`.animotion_clip`)
+
+For complex scenes (like multi-ball physics simulations), use `.animotion_clip()` to declare tracked properties, handle physics bindings, and render via canvas:
+
+```rust
+use gpui::*;
+use gpui_animotion::*;
+
+#[derive(Clone)]
+struct BallProps {
+    y: Prop<f32>,
+    color: Prop<Hsla>,
+}
+
+fn render_physics_marbles(floor_y: f32) -> impl IntoElement {
+    div().animotion_clip(
+        ElementId::Name("physics_ball".into()),
+        |c| vec![
+            BallProps {
+                // Fluent chain: start at 40.0, apply gravity bounce, then loop back to top smoothly
+                y: c.prop(40.0)
+                    .gravity(
+                        GravityParams {
+                            gravity: 2400.0,
+                            restitution: 0.80,
+                            floor_y,
+                            ..Default::default()
+                        },
+                        6,
+                    )
+                    .tween(40.0, 1.0)
+                    .clone(),
+                color: c.prop(hsla(0.75, 0.8, 0.50, 1.0)),
+            }
+        ],
+        move |el, balls| {
+            let balls = balls.to_vec();
+            el.child(
+                canvas(
+                    |_, _, _| {},
+                    move |bounds, _, window, _| {
+                        for ball in &balls {
+                            let current_y = ball.y.get();
+                            let ball_origin = point(
+                                bounds.origin.x + px(100.0),
+                                bounds.origin.y + px(current_y),
+                            );
+
+                            window.paint_quad(
+                                fill(
+                                    Bounds {
+                                        origin: ball_origin,
+                                        size: size(px(60.0), px(60.0)),
+                                    },
+                                    ball.color.get(),
+                                )
+                                .corner_radii(Corners::all(px(30.0))),
+                            );
+                        }
+                    },
+                )
+                .size_full(),
+            )
+        },
+    )
+}
 ```
 
 ## Core Concepts
 
-### 1. `tween`
+The engine is built around a few primary building blocks that handle timing, interpolation, and state reactivity:
 
-Defines an interpolation from a start value to an end value over a given duration (in seconds). Tweens can be chained together sequentially:
+### 1. `tween` and Keyframing
 
-```rust
-// Interpolates from 0.0 to 100.0 over 0.5s, then from 100.0 to 50.0 over 0.3s
-tween(0.0, 100.0, 0.5).tween(50.0, 0.3)
-```
+Tweens form the baseline of all procedural transitions. A tween interpolates a property value from its current state to a specified target over a set duration (measured in seconds).
 
-### 2. `prop`
+* **Sequential Chaining**: You can chain multiple `.tween()` calls together to build complex multi-step timelines (e.g., scale up, hold, then scale down).
+* **Easing & Interpolation**: Handled automatically via trait implementations for native types.
 
-Maps a `tween` or timeline structure to a specific GPUI element modifier:
+### 2. Physics & Procedural Tracks (`gravity`)
 
-```rust
-prop(
-    tween(0.0, 1.0, 0.4),
-    |el, opacity| el.opacity(opacity),
-)
-```
+Beyond standard keyframe tweens, `gpui_animotion` supports programmatic physical simulations:
 
-### 3. `all` and `seq`
+* **`gravity(...)`**: Automatically calculates realistic acceleration, velocity loss, and energy restitution upon hitting a specified floor boundary.
+* **Custom Trajectories**: Useful for natural movement effects without needing to hand-craft every single keyframe manually.
 
-Orchestrate execution flow across properties or elements:
+### 3. Property Management (`Prop<T>`)
 
-* **`all(...)`**: Executes wrapped animations in **parallel**.
-* TODO **`seq(...)`**: Executes wrapped animations **sequentially**.
+A `Prop<T>` manages the underlying state of an animated value across frames.
 
-```rust
-// Run two property animations simultaneously
-all((
-    prop(tween(0.0, 100.0, 0.5), |el, x| el.left(px(x))),
-    prop(tween(1.0, 2.0, 0.5), |el, s| el.scale(s)),
-))
+* **Thread-Safe Handles**: Backed by thread-safe synchronization primitives (`Arc<Mutex<T>>`), allowing properties to be sampled efficiently inside high-frequency render loops.
+* **Fluent API**: Allows mixing procedural physics and manual tweens directly on the property builder before mounting.
 
-```
+### 4. Combinators (`all` and `seq`)
+
+Orchestrate how multiple properties or elements execute relative to one another:
+
+* **`all(...)`**: Executes wrapped property animations and tracks concurrently in parallel.
+* **`seq(...)`**: Executes wrapped animations sequentially one after another *(coming soon)*.
+
+### 5. Continuous Looping
+
+To prevent animations from popping or resetting abruptly, sequences can be designed to loop seamlessly. By terminating a physics or keyframe track with an invisible return `.tween()` back to the initial starting value, elements can be smoothly guided back to their origin without breaking visual continuity.
 
 ## License
 
@@ -121,4 +188,3 @@ Dual-licensed under either of:
 
 * Apache License, Version 2.0 ([LICENSE-APACHE](http://www.apache.org/licenses/LICENSE-2.0))
 * MIT license ([LICENSE-MIT](http://opensource.org/licenses/MIT))
-
