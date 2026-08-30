@@ -12,7 +12,7 @@ Inspired by the procedural composition of tools like **Motion Canvas** and the t
 
 UI animation libraries generally fall into two categories:
 
-1. **Implicit Layout Transitions:** Optimized for $A \to B$ state changes, but cumbersome when orchestrating multi-element scenes with strict timing dependencies.
+1. **Implicit Layout Transitions:** Optimized for $`A \to B`$ state changes, but cumbersome when orchestrating multi-element scenes with strict timing dependencies.
 2. **Keyframe Timelines:** Highly controllable, but often decoupled from modern component-driven layout trees.
 
 `gpui_animotion` bridges this gap for GPUI by introducing **combinator-driven element animation**. Instead of managing raw frame ticks or maintaining imperative timeline controllers, you attach composable timing pipelines directly to standard GPUI elements using reactive property mappers and fluent animation combinators.
@@ -31,7 +31,7 @@ Add `gpui_animotion` and `gpui` to your `Cargo.toml`:
 ```toml
 [dependencies]
 gpui = { package = "gpui-unofficial", version = "1.16" }
-gpui_animotion = "0.2"
+gpui_animotion = "0.3"
 ```
 
 ## Quickstart
@@ -46,7 +46,7 @@ cargo run --example many_shiny_balls
 
 ## Usage Examples
 
-### 1. Simple Inline Animation (`.animotion`)
+### 1. Spring & Tween Inline Animation (`.animotion`)
 
 For straightforward UI components, use `.animotion()` to declaratively map tweens directly onto standard `Div` attributes like position and color:
 
@@ -54,31 +54,32 @@ For straightforward UI components, use `.animotion()` to declaratively map tween
 use gpui::*;
 use gpui_animotion::*;
 
-fn render_bouncing_ball() -> impl IntoElement {
+fn render_spring_box() -> impl IntoElement {
     div()
         .absolute()
         .size_12()
-        .rounded_full()
+        .rounded_lg()
+        .bg(rgb(0x3b82f6))
         .animotion(
-            "bouncing_ball",
+            "spring_box",
             all((
-                // Y-axis translation: Bounce down and back up
+                // X-axis: Analytical spring to 200px, then smooth tween back to 0px
                 prop(
-                    tween(40.0, 300.0, 0.8).tween(40.0, 0.8),
-                    |el, y| el.top(px(y)),
+                    spring(0.0, 200.0, SpringParams::from_damping_ratio(250.0, 0.55))
+                        .tween(0.0, 0.6),
+                    |el, x| el.left(px(x)),
                 ),
-                // Background color transition run concurrently
+                // Concurrently pulse scale/opacity
                 prop(
-                    tween(hsla(0.55, 0.8, 0.55, 1.0), hsla(0.95, 0.8, 0.55, 1.0), 1.6)
-                        .tween(hsla(0.55, 0.8, 0.55, 1.0), 1.6),
-                    |el, color| el.bg(color),
+                    tween(0.8, 1.1, 0.4).tween(0.8, 0.6),
+                    |el, s| el.opacity(s),
                 ),
             )),
         )
 }
 ```
 
-### 2. Advanced Physics & Clips (`.animotion_clip`)
+### 2. Multi-Body Physics & Custom Canvas (`.animotion_clip`)
 
 For complex scenes (like multi-ball physics simulations), use `.animotion_clip()` to declare tracked properties, handle physics bindings, and render via canvas:
 
@@ -88,30 +89,33 @@ use gpui_animotion::*;
 
 #[derive(Clone)]
 struct BallProps {
+    x: f32,
     y: Prop<f32>,
     color: Prop<Hsla>,
 }
 
-fn render_physics_marbles(floor_y: f32) -> impl IntoElement {
+fn render_spring_marbles(floor_y: f32) -> impl IntoElement {
     div().animotion_clip(
-        ElementId::Name("physics_ball".into()),
+        ElementId::Name("physics_spring_marbles".into()),
         |c| vec![
+            // 1. Lively underdamped spring (low damping ratio = visible oscillation)
             BallProps {
-                // Fluent chain: start at 40.0, apply gravity bounce, then loop back to top smoothly
+                x: 100.0,
                 y: c.prop(40.0)
-                    .gravity(
-                        GravityParams {
-                            gravity: 2400.0,
-                            restitution: 0.80,
-                            floor_y,
-                            ..Default::default()
-                        },
-                        6,
-                    )
-                    .tween(40.0, 1.0)
+                    .spring(floor_y, SpringParams::from_damping_ratio(220.0, 0.22))
+                    .spring(40.0, SpringParams::from_damping_ratio(180.0, 0.60))
                     .clone(),
                 color: c.prop(hsla(0.75, 0.8, 0.50, 1.0)),
-            }
+            },
+            // 2. Snappy UI spring (medium damping ratio = smooth settle)
+            BallProps {
+                x: 260.0,
+                y: c.prop(80.0)
+                    .spring(floor_y, SpringParams::from_damping_ratio(180.0, 0.50))
+                    .spring(80.0, SpringParams::from_damping_ratio(180.0, 0.70))
+                    .clone(),
+                color: c.prop(hsla(0.25, 0.8, 0.45, 1.0)),
+            },
         ],
         move |el, balls| {
             let balls = balls.to_vec();
@@ -121,15 +125,15 @@ fn render_physics_marbles(floor_y: f32) -> impl IntoElement {
                     move |bounds, _, window, _| {
                         for ball in &balls {
                             let current_y = ball.y.get();
-                            let ball_origin = point(
-                                bounds.origin.x + px(100.0),
+                            let origin = point(
+                                bounds.origin.x + px(ball.x),
                                 bounds.origin.y + px(current_y),
                             );
 
                             window.paint_quad(
                                 fill(
                                     Bounds {
-                                        origin: ball_origin,
+                                        origin,
                                         size: size(px(60.0), px(60.0)),
                                     },
                                     ball.color.get(),
@@ -148,39 +152,58 @@ fn render_physics_marbles(floor_y: f32) -> impl IntoElement {
 
 ## Core Concepts
 
-The engine is built around a few primary building blocks that handle timing, interpolation, and state reactivity:
+The engine is built around composable building blocks for timing, interpolation, and physics simulation:
 
-### 1. `tween` and Keyframing
+### 1. Keyframing & Tweens (`tween`)
 
-Tweens form the baseline of all procedural transitions. A tween interpolates a property value from its current state to a specified target over a set duration (measured in seconds).
+Tweens form the baseline of programmatic transitions. A tween linearly or smoothly interpolates a property value from its current state to a target value over a specified duration in seconds:
 
-* **Sequential Chaining**: You can chain multiple `.tween()` calls together to build complex multi-step timelines (e.g., scale up, hold, then scale down).
-* **Easing & Interpolation**: Handled automatically via trait implementations for native types.
+* **Sequential Chaining**: Chain multiple `.tween()` calls together to build multi-step paths (`tween(0.0, 100.0, 0.5).tween(50.0, 0.3)`).
+* **Native Type Support**: Interpolation is implemented automatically for f32, Hsla, Rgba, and other GPUI geometry primitives.
+* (TODO: Add Easing) **Easing**:
 
-### 2. Physics & Procedural Tracks (`gravity`)
+### 2. Analytical Spring Physics (`spring`)
 
-Beyond standard keyframe tweens, `gpui_animotion` supports programmatic physical simulations:
+Spring tracks compute closed-form harmonic oscillator equations at discrete sampling steps (`sample_fps`), providing high-performance physical motion without numeric accumulation error:
 
-* **`gravity(...)`**: Automatically calculates realistic acceleration, velocity loss, and energy restitution upon hitting a specified floor boundary.
-* **Custom Trajectories**: Useful for natural movement effects without needing to hand-craft every single keyframe manually.
+* **`SpringParams`:** Configure mass ($m$), stiffness ($k$), damping ($c$), initial velocity ($v_0$), and settling threshold ($\epsilon$).
+* **Damping Ratio Helper:** Use `SpringParams::from_damping_ratio(stiffness, zeta)` to configure response behavior quickly:
+* $\zeta < 1.0$: **Underdamped** (elastic bounce with visible oscillation).
+* $\zeta = 1.0$: **Critically Damped** (fastest possible settlement without overshoot).
+* $\zeta > 1.0$: **Overdamped** (gentle, sluggish deceleration).
 
-### 3. Property Management (`Prop<T>`)
 
-A `Prop<T>` manages the underlying state of an animated value across frames.
+* **Automatic Duration Detection:** Automatically calculates resting duration based on settling thresholds, or accepts explicit duration overrides.
 
-* **Thread-Safe Handles**: Backed by thread-safe synchronization primitives (`Arc<Mutex<T>>`), allowing properties to be sampled efficiently inside high-frequency render loops.
-* **Fluent API**: Allows mixing procedural physics and manual tweens directly on the property builder before mounting.
+```rust
+// Chain a spring launch into a return bounce
+prop.spring(300.0, SpringParams::from_damping_ratio(200.0, 0.35))
+    .spring(0.0, SpringParams::from_damping_ratio(180.0, 0.70));
 
-### 4. Combinators (`all` and `seq`)
+```
 
-Orchestrate how multiple properties or elements execute relative to one another:
+### 3. Gravity & Kinematic Trajectories (`gravity`)
 
-* **`all(...)`**: Executes wrapped property animations and tracks concurrently in parallel.
-* **`seq(...)`**: Executes wrapped animations sequentially one after another *(coming soon)*.
+* **`gravity(...)`**: Simulates constant acceleration, floor collision detection, and velocity decay based on a coefficient of restitution.
+* Eliminates the need to hand-craft bounce parabola keyframes.
 
-### 5. Continuous Looping
+### 4. Property Handles (`Prop<T>`)
 
-To prevent animations from popping or resetting abruptly, sequences can be designed to loop seamlessly. By terminating a physics or keyframe track with an invisible return `.tween()` back to the initial starting value, elements can be smoothly guided back to their origin without breaking visual continuity.
+`Prop<T>` manages animated state across frames:
+
+* **Thread-Safe Sampling:** Backed by thread-safe synchronization primitives (`Arc<Mutex<T>>`), allowing properties to be sampled with near-zero overhead during GPUI paint passes.
+* **Fluent Builder:** Attach `.tween()`, `.spring()`, and `.gravity()` calls directly to the property builder before mounting into the view tree.
+
+### 5. Combinators (`all` and `seq`)
+
+Orchestrate how multiple properties or elements execute:
+
+* **`all(...)`**: Executes wrapped property tracks in parallel concurrently.
+* **`seq(...)`**: Executes wrapped animation tracks sequentially in series *(coming soon)*.
+
+### 6. Continuous Looping
+
+Animations loop seamlessly when a sequence is terminated by returning to the initial value. Chaining a physics track with an inverse spring or return `.tween()` guarantees visual continuity across continuous playback cycles.
 
 ## License
 
