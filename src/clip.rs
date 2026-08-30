@@ -1,4 +1,4 @@
-use crate::{GravityParams, Interpolate, PropertyTrack, Track};
+use crate::{GravityParams, Interpolate, PropertyTrack, SpringParams, Track};
 use gpui::Div;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -63,6 +63,24 @@ impl Prop<f32> {
             },
         )
         .gravity(params, max_bounces);
+
+        *track = updated_track;
+        self
+    }
+}
+
+impl Prop<f32> {
+    /// Appends a spring trajectory to an existing numeric Prop.
+    pub fn spring(&self, target: f32, params: SpringParams) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        let updated_track = std::mem::replace(
+            &mut *track,
+            Track {
+                initial: 0.0,
+                keyframes: Vec::new(),
+            },
+        )
+        .spring(target, params);
 
         *track = updated_track;
         self
