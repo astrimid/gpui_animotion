@@ -1,7 +1,6 @@
 use crate::interpolate::Interpolate;
-use crate::GravityParams;
-use crate::SpringParams;
-use crate::segments::{TweenSegment, SpringSegment, GravitySegment};
+use crate::{GravityParams, FlickParams, SpringParams};
+use crate::segments::{TweenSegment, SpringSegment, GravitySegment, FlickSegment};
 use crate::track::Track;
 use gpui::Div;
 use std::fmt::Debug;
@@ -106,6 +105,14 @@ impl Prop<f32> {
         let mut track = self.track.lock().unwrap();
         let start = track.current_end_value();
         track.segments.push(Box::new(GravitySegment::new(start, params, max_bounces)));
+        self
+    }
+
+    /// Appends an analytical kinetic friction decay segment to the Prop.
+    pub fn flick(&self, params: FlickParams) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        let start = track.current_end_value();
+        track.segments.push(Box::new(FlickSegment::new(start, params)));
         self
     }
 }
