@@ -1,25 +1,19 @@
-use crate::{Keyframe, Track};
-use std::time::Duration;
+use crate::Track;
+use crate::segments::GravitySegment;
 
-/// Helper function to initialize a track driven by gravitational physics integration.
-pub fn gravity(from_y: f32, params: GravityParams, max_bounces: usize) -> Track<f32> {
-    Track {
-        initial: from_y,
-        keyframes: Vec::new(),
-    }
-    .gravity(params, max_bounces)
-}
-
-/// Parameters configuring real-world gravitational motion for numeric tracks.
+/// Parameters configuring gravitational motion and bounce mechanics.
+#[derive(Clone, Debug)]
 pub struct GravityParams {
-    /// Acceleration due to gravity in pixels/s² (e.g. 2500.0).
+    /// Gravitational downward acceleration in px/sec² (e.g., 2400.0)
     pub gravity: f32,
-    /// Coefficient of restitution / bounciness elasticity [0.0, 1.0] (e.g. 0.78 for glass).
+    /// Coefficient of restitution / bounciness elasticity ∈ [0.0, 1.0] (e.g., 0.75)
     pub restitution: f32,
-    /// The target floor collision baseline position.
+    /// The target floor collision baseline position in pixels
     pub floor_y: f32,
-    /// Integration sampling resolution (default 60.0 FPS for smooth linear interpolation).
-    pub sample_fps: f32,
+    /// Velocity threshold in px/sec below which bounces terminate. Default: 15.0
+    pub rest_threshold: f32,
+    /// Initial velocity entering the gravity segment. Default: 0.0
+    pub initial_velocity: f32,
 }
 
 impl Default for GravityParams {
@@ -28,48 +22,25 @@ impl Default for GravityParams {
             gravity: 2500.0,
             restitution: 0.75,
             floor_y: 300.0,
-            sample_fps: 60.0,
+            rest_threshold: 15.0,
+            initial_velocity: 0.0,
         }
     }
 }
 
+pub fn gravity(from_y: f32, params: GravityParams, max_bounces: usize) -> Track<f32> {
+    Track::new(from_y).gravity(params, max_bounces)
+}
+
 impl Track<f32> {
-    /// Appends a multi-bounce gravity trajectory using physical acceleration integration.
+    /// Appends a piecewise parabolic gravity trajectory to the Track
     pub fn gravity(mut self, params: GravityParams, max_bounces: usize) -> Self {
-        let dt = 1.0 / params.sample_fps.max(1.0);
-        let step_duration = Duration::from_secs_f32(dt);
-
-        let mut current_y = self.keyframes.last().map(|k| k.target).unwrap_or(self.initial);
-        let mut vel_y = 0.0f32;
-        let mut bounces = 0;
-
-        while bounces < max_bounces {
-            // Kinematic integration: v = v + g*dt, y = y + v*dt
-            vel_y += params.gravity * dt;
-            current_y += vel_y * dt;
-
-            // Floor collision response
-            if current_y >= params.floor_y {
-                current_y = params.floor_y;
-                vel_y = -vel_y * params.restitution;
-                bounces += 1;
-
-                // Threshold check: kill negligible micro-vibrations
-                if vel_y.abs() < 15.0 {
-                    self.keyframes.push(Keyframe {
-                        target: params.floor_y,
-                        duration: step_duration,
-                    });
-                    break;
-                }
-            }
-
-            self.keyframes.push(Keyframe {
-                target: current_y,
-                duration: step_duration,
-            });
-        }
-
+        let start_y = self.current_end_value();
+        self.segments.push(Box::new(GravitySegment::new(
+            start_y,
+            params,
+            max_bounces,
+        )));
         self
     }
 }

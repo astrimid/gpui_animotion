@@ -1,14 +1,5 @@
-use crate::{Keyframe, Track};
-use std::time::Duration;
-
-/// Helper function to initialize a track driven by spring physics.
-pub fn spring(from_y: f32, target: f32, params: SpringParams) -> Track<f32> {
-    Track {
-        initial: from_y,
-        keyframes: Vec::new(),
-    }
-    .spring(target, params)
-}
+use crate::Track;
+use crate::segments::SpringSegment;
 
 /// Parameters configuring harmonic spring physics for numeric tracks.
 #[derive(Clone, Debug)]
@@ -57,102 +48,14 @@ impl SpringParams {
     }
 }
 
+pub fn spring(from: f32, to: f32, params: crate::SpringParams) -> Track<f32> {
+    Track::new(from).spring(to, params)
+}
 
 impl Track<f32> {
-    /// Appends an analytical spring trajectory to the track.
-    pub fn spring(mut self, target: f32, params: SpringParams) -> Self {
-        let start = self.keyframes.last().map(|k| k.target).unwrap_or(self.initial);
-        let x0 = start - target;
-        let v0 = params.initial_velocity;
-        let mass = params.mass.max(0.001);
-        let stiffness = params.stiffness.max(0.001);
-        let damping = params.damping.max(0.0);
-        let threshold = params.threshold.max(0.0001);
-
-        let omega_n = (stiffness / mass).sqrt();
-        let zeta = damping / (2.0 * (stiffness * mass).sqrt());
-
-        // 1. Calculate duration analytically if not explicitly forced
-        let duration = if let Some(dur) = params.duration {
-            dur
-        } else if zeta < 0.9999 {
-            // Underdamped regime
-            let omega_d = omega_n * (1.0 - zeta * zeta).sqrt();
-            let a = x0;
-            let b = (v0 + zeta * omega_n * x0) / omega_d;
-            let amplitude = (a * a + b * b).sqrt();
-            if amplitude <= threshold {
-                0.0
-            } else {
-                (amplitude / threshold).ln() / (zeta * omega_n)
-            }
-        } else if zeta > 1.0001 {
-            // Overdamped regime
-            let lambda_slow = omega_n * (zeta - (zeta * zeta - 1.0).sqrt());
-            if x0.abs() <= threshold {
-                0.0
-            } else {
-                (x0.abs() / threshold).ln() / lambda_slow
-            }
-        } else {
-            // Critically damped regime
-            let a = x0;
-            let b = v0 + omega_n * x0;
-            let r_crit = a.abs() + b.abs() / (omega_n * std::f32::consts::E);
-            if r_crit <= threshold {
-                0.0
-            } else {
-                ((r_crit / threshold).ln() + 1.0) / omega_n
-            }
-        };
-
-        if duration <= 0.0 {
-            self.keyframes.push(Keyframe {
-                target,
-                duration: Duration::from_millis(16),
-            });
-            return self;
-        }
-
-        // 2. Sample the exact analytical formula at dt increments
-        let dt = 1.0 / params.sample_fps.max(1.0);
-        let step_duration = Duration::from_secs_f32(dt);
-        let mut t = dt;
-
-        while t < duration {
-            let displacement = if zeta < 0.9999 {
-                let omega_d = omega_n * (1.0 - zeta * zeta).sqrt();
-                let a = x0;
-                let b = (v0 + zeta * omega_n * x0) / omega_d;
-                let envelope = (-zeta * omega_n * t).exp();
-                envelope * (a * (omega_d * t).cos() + b * (omega_d * t).sin())
-            } else if zeta > 1.0001 {
-                let omega_d = omega_n * (zeta * zeta - 1.0).sqrt();
-                let a = x0;
-                let b = (v0 + zeta * omega_n * x0) / omega_d;
-                let envelope = (-zeta * omega_n * t).exp();
-                envelope * (a * (omega_d * t).cosh() + b * (omega_d * t).sinh())
-            } else {
-                let a = x0;
-                let b = v0 + omega_n * x0;
-                let envelope = (-omega_n * t).exp();
-                envelope * (a + b * t)
-            };
-
-            self.keyframes.push(Keyframe {
-                target: target + displacement,
-                duration: step_duration,
-            });
-
-            t += dt;
-        }
-
-        // Final resting frame
-        self.keyframes.push(Keyframe {
-            target,
-            duration: step_duration,
-        });
-
+    pub fn spring(mut self, target: f32, params: crate::SpringParams) -> Self {
+        let start = self.current_end_value();
+        self.segments.push(Box::new(SpringSegment::new(start, target, params)));
         self
     }
 }
