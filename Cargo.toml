@@ -3,6 +3,7 @@ name = "gpui_animotion"
 version = "0.4.0"
 edition = "2024"
 description = "Declarative property animation engine for GPUI"
+repository = "https://github.com/astrimid/gpui_animotion"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
