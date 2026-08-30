@@ -18,11 +18,6 @@ pub use property::{all, prop, Prop, PropertyTrack, Animatable};
 pub use track::Track;
 
 pub use segment::AnimationSegment;
-pub use segments::{
-    SpringSegment,
-    GravitySegment,
-    TweenSegment
-};
 pub use spring::{spring, SpringParams};
 pub use gravity::{gravity, GravityParams};
 pub use tween::tween;

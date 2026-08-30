@@ -10,19 +10,26 @@ Inspired by the procedural composition of tools like **Motion Canvas** and the t
 
 ## Overview & Paradigm
 
-UI animation libraries generally fall into two categories:
+UI animation approaches generally fall into three paradigms, each with distinct tradeoffs:
 
-1. **Implicit Layout Transitions:** Optimized for $`A \to B`$ state changes, but cumbersome when orchestrating multi-element scenes with strict timing dependencies.
-2. **Keyframe Timelines:** Highly controllable, but often decoupled from modern component-driven layout trees.
+1. **Implicit Layout Transitions:** Optimized for basic $A \to B$ state changes, but cumbersome when orchestrating multi-element scenes with precise timing dependencies.
+2. **Keyframe Timelines:** Highly controllable, but often imperative, verbose, and decoupled from modern reactive layout trees.
+3. **Force-Based Game Physics:** Expressive and interactive, but frame-rate dependent, prone to overshoot under CPU jitter, and difficult to synchronize deterministically.
 
-`gpui_animotion` bridges this gap for GPUI by introducing **combinator-driven element animation**. Instead of managing raw frame ticks or maintaining imperative timeline controllers, you attach composable timing pipelines directly to standard GPUI elements using reactive property mappers and fluent animation combinators.
+`gpui_animotion` bridges these paradigms for GPUI by pairing **closed-form analytical segment pipelines** with **fluent, combinator-driven element animation**.
+
+Instead of maintaining imperative timeline controllers, pre-baking discrete keyframe arrays, or running frame-by-frame numerical integration loops:
+
+* **$\mathcal{O}(1)$ Deterministic Evaluation:** Every motion primitive compiles into a pure, continuous function $f(t) \to \text{Value}$ evaluated in constant time, ensuring frame-rate independence and glitch-free rendering under CPU load.
+* **Declarative Tree Integration:** Composable timing pipelines attach directly to standard GPUI elements via reactive property mappers and fluent combinators, keeping motion co-located with your component layout.
 
 ### Key Features
 
 * **Direct Element Binding:** Animate standard GPUI layout properties, custom canvas properties, and reactive variables directly.
-* **Procedural Physics:** Built-in simulation tools like realistic gravity and bouncing trajectories.
+* **Analytical Physics:** Exact, closed-form solutions for harmonic springs, piecewise parabolic gravity, and kinetic drag—zero Euler integration drift.
+* **Frame-Rate Independent:** Animations evaluate continuously at any refresh rate (60 Hz, 120 Hz, or variable) and support instant random-access timeline scrubbing.
 * **Fluent Chaining:** Easily compose complex sequences combining keyframe `.tween()` transitions and physics algorithms.
-* **Zero Canvas Lock-In:** Works seamlessly with standard GPUI views and layouts.
+* **Zero Canvas Lock-In:** Works seamlessly across standard GPUI layout elements (`Div`) and custom canvas draw passes.
 
 ## Installation
 
@@ -31,7 +38,7 @@ Add `gpui_animotion` and `gpui` to your `Cargo.toml`:
 ```toml
 [dependencies]
 gpui = { package = "gpui-unofficial", version = "1.16" }
-gpui_animotion = "0.3"
+gpui_animotion = "0.4"
 ```
 
 ## Quickstart
@@ -81,7 +88,7 @@ fn render_spring_box() -> impl IntoElement {
 
 ### 2. Multi-Body Physics & Custom Canvas (`.animotion_clip`)
 
-For complex scenes (like multi-ball physics simulations), use `.animotion_clip()` to declare tracked properties, handle physics bindings, and render via canvas:
+For complex scenes (like multi-body physics simulations), use `.animotion_clip()` to declare tracked properties, chain analytical trajectories, and render via canvas:
 
 ```rust
 use gpui::*;
@@ -156,7 +163,7 @@ The engine is built around composable building blocks for timing, interpolation,
 
 ### 1. Keyframing & Tweens (`tween`)
 
-Tweens form the baseline of programmatic transitions. A tween linearly or smoothly interpolates a property value from its current state to a target value over a specified duration in seconds:
+Tweens linearly or smoothly interpolate property values across durations:
 
 * **Sequential Chaining**: Chain multiple `.tween()` calls together to build multi-step paths (`tween(0.0, 100.0, 0.5).tween(50.0, 0.3)`).
 * **Native Type Support**: Interpolation is implemented automatically for f32, Hsla, Rgba, and other GPUI geometry primitives.
@@ -164,7 +171,7 @@ Tweens form the baseline of programmatic transitions. A tween linearly or smooth
 
 ### 2. Analytical Spring Physics (`spring`)
 
-Spring tracks compute closed-form harmonic oscillator equations at discrete sampling steps (`sample_fps`), providing high-performance physical motion without numeric accumulation error:
+Spring tracks solve the differential equations of a damped harmonic oscillator in closed form, providing smooth motion without numerical integration or frame-rate dependency:
 
 * **`SpringParams`:** Configure mass ($m$), stiffness ($k$), damping ($c$), initial velocity ($v_0$), and settling threshold ($\epsilon$).
 * **Damping Ratio Helper:** Use `SpringParams::from_damping_ratio(stiffness, zeta)` to configure response behavior quickly:
@@ -172,8 +179,7 @@ Spring tracks compute closed-form harmonic oscillator equations at discrete samp
 * $\zeta = 1.0$: **Critically Damped** (fastest possible settlement without overshoot).
 * $\zeta > 1.0$: **Overdamped** (gentle, sluggish deceleration).
 
-
-* **Automatic Duration Detection:** Automatically calculates resting duration based on settling thresholds, or accepts explicit duration overrides.
+* **Analytical Duration Solving:** The natural resting duration is calculated analytically using logarithmic decay envelopes, or can be bounded by an explicit duration cap.
 
 ```rust
 // Chain a spring launch into a return bounce
@@ -182,9 +188,10 @@ prop.spring(300.0, SpringParams::from_damping_ratio(200.0, 0.35))
 
 ```
 
-### 3. Gravity & Kinematic Trajectories (`gravity`)
+### 3. Piecewise Parabolic Gravity (`gravity`)
 
-* **`gravity(...)`**: Simulates constant acceleration, floor collision detection, and velocity decay based on a coefficient of restitution.
+* **`gravity(...)`**: Solves ballistic flight arcs and floor collisions analytically using exact kinematic equations ($y(t) = y_0 + v_0 t + \frac{1}{2} g t^2$) and restitution coefficients.
+* Computes multi-bounce trajectories in $\mathcal{O}(1)$ time without iterative Euler stepping.
 * Eliminates the need to hand-craft bounce parabola keyframes.
 
 ### 4. Property Handles (`Prop<T>`)
