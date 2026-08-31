@@ -1,6 +1,7 @@
 mod clip;
 mod clip_ext;
 mod element;
+mod easing;
 mod flick;
 mod interpolate;
 mod property;
@@ -18,6 +19,8 @@ pub use gravity::{gravity, GravityParams};
 pub use flick::{flick, FlickParams};
 pub use spring::{spring, SpringParams};
 pub use tween::tween;
+pub use easing::tween_eased;
+pub use segments::{Ease, CubicBezier};
 
 pub use segment::AnimationSegment;
 pub use interpolate::Interpolate;

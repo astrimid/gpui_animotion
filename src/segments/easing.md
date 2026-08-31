@@ -1,0 +1,1 @@
+This file implements the `Ease` enum, standard easing curves, a 4-point parametric **Cubic Bezier solver** using Newton-Raphson root finding with bisection fallback (matching the CSS `cubic-bezier(x1, y1, x2, y2)` specification), and first-derivative calculations for momentum continuity.

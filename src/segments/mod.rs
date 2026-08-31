@@ -1,8 +1,10 @@
+mod easing;
 mod gravity;
 mod flick;
 mod spring;
 mod tween;
 
+pub use easing::{Ease, CubicBezier};
 pub use gravity::GravitySegment;
 pub use flick::FlickSegment;
 pub use spring::SpringSegment;

@@ -1,5 +1,5 @@
 use crate::interpolate::Interpolate;
-use crate::{GravityParams, FlickParams, SpringParams};
+use crate::{GravityParams, FlickParams, SpringParams, Ease};
 use crate::segments::{TweenSegment, SpringSegment, GravitySegment, FlickSegment};
 use crate::track::Track;
 use gpui::Div;
@@ -82,13 +82,33 @@ impl<T: Animatable> Prop<T> {
     pub fn tween(&self, target: T, secs: f32) -> &Self {
         let mut track = self.track.lock().unwrap();
         let start = track.current_end_value();
-        track.segments.push(Box::new(TweenSegment {
+        track.segments.push(Box::new(TweenSegment::new(
             start,
             target,
-            duration: Duration::from_secs_f32(secs),
-        }));
+            Duration::from_secs_f32(secs),
+        )));
         self
     }
+
+    /// Modifies the easing profile of the most recently chained segment.
+    pub fn ease(&self, ease: Ease) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        if let Some(last) = track.segments.last_mut() {
+            last.set_ease(ease);
+        }
+        self
+    }
+
+    /// Appends a tween segment with a specific easing profile in a single call.
+    pub fn tween_eased(&self, target: T, secs: f32, ease: Ease) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        let start = track.current_end_value();
+        track.segments.push(Box::new(
+            TweenSegment::new(start, target, Duration::from_secs_f32(secs)).with_ease(ease),
+        ));
+        self
+    }
+
 }
 
 impl Prop<f32> {

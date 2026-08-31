@@ -1,3 +1,4 @@
+use crate::segments::Ease;
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -14,4 +15,7 @@ pub trait AnimationSegment<T>: Send + Sync + Debug {
 
     /// Returns the terminal/settled resting value at t = duration
     fn end_value(&self) -> T;
+
+    /// Configures the easing curve if this segment supports non-linear transfer functions.
+    fn set_ease(&mut self, _ease: Ease) {}
 }

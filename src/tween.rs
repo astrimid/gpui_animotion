@@ -13,11 +13,13 @@ pub fn tween<T: Animatable>(
 impl<T: Animatable> Track<T> {
     pub fn tween(mut self, target: T, secs: f32) -> Self {
         let start = self.current_end_value();
-        self.segments.push(Box::new(TweenSegment {
+        self.segments.push(Box::new(TweenSegment::new(
             start,
             target,
-            duration: Duration::from_secs_f32(secs),
-        }));
+            Duration::from_secs_f32(secs),
+        )));
         self
     }
 }
+
+
