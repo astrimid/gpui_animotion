@@ -11,6 +11,7 @@ mod gravity;
 mod tween;
 mod segment;
 mod segments;
+mod loop_mode;
 
 pub use element::{AnimotionElement, AnimotionExt};
 pub use property::{all, prop, Prop, PropertyTrack, Animatable};
@@ -23,7 +24,9 @@ pub use easing::tween_eased;
 pub use segments::{Ease, CubicBezier};
 
 pub use segment::AnimationSegment;
+pub use segments::constrained::{ConstrainedSegment, ConstraintMode, HoldSegment};
 pub use interpolate::Interpolate;
 pub use track::Track;
+pub use loop_mode::LoopMode;
 pub use clip::ClipBuilder;
 pub use clip_ext::AnimotionClipExt;

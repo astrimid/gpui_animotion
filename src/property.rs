@@ -1,11 +1,13 @@
 use crate::interpolate::Interpolate;
 use crate::{GravityParams, FlickParams, SpringParams, Ease};
 use crate::segments::{TweenSegment, SpringSegment, GravitySegment, FlickSegment};
+use crate::segments::{ConstrainedSegment, HoldSegment};
 use crate::track::Track;
 use gpui::Div;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use crate::LoopMode;
 
 /// Trait for applying animated properties to GPUI elements.
 pub trait PropertyTrack: Send + Sync {
@@ -107,6 +109,78 @@ impl<T: Animatable> Prop<T> {
             TweenSegment::new(start, target, Duration::from_secs_f32(secs)).with_ease(ease),
         ));
         self
+    }
+
+    // --- Temporal Constraints ---
+
+    /// Scales the most recently appended segment so it completes within `secs`.
+    pub fn fit_to_duration(&self, secs: f32) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        if let Some(last) = track.segments.pop() {
+            track.segments.push(Box::new(ConstrainedSegment::fit(
+                last,
+                Duration::from_secs_f32(secs),
+            )));
+        }
+        self
+    }
+
+    /// Truncates the most recently appended segment at `secs`, snapping to rest once exceeded.
+    pub fn clamp_at_duration(&self, secs: f32) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        if let Some(last) = track.segments.pop() {
+            track.segments.push(Box::new(ConstrainedSegment::clamp(
+                last,
+                Duration::from_secs_f32(secs),
+            )));
+        }
+        self
+    }
+
+    // --- Delays and Choreography Holds ---
+
+    /// Pauses at the current value for `secs` before following segments begin.
+    pub fn hold(&self, secs: f32) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        let start = track.current_end_value();
+        track.segments.push(Box::new(HoldSegment::new(
+            start,
+            Duration::from_secs_f32(secs),
+        )));
+        self
+    }
+
+    /// Alias for `.hold()`, used at the start or middle of choreography chains.
+    pub fn delay(&self, secs: f32) -> &Self {
+        self.hold(secs)
+    }
+
+    // --- Loop Policies ---
+
+    pub fn loop_mode(&self, mode: LoopMode) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        track.loop_mode = mode;
+        self
+    }
+
+    pub fn loop_forever(&self) -> &Self {
+        self.loop_mode(LoopMode::LoopForever)
+    }
+
+    pub fn play_once(&self) -> &Self {
+        self.loop_mode(LoopMode::Once)
+    }
+
+    pub fn loop_count(&self, count: usize) -> &Self {
+        self.loop_mode(LoopMode::Count(count))
+    }
+
+    pub fn ping_pong(&self) -> &Self {
+        self.loop_mode(LoopMode::PingPong)
+    }
+
+    pub fn ping_pong_count(&self, count: usize) -> &Self {
+        self.loop_mode(LoopMode::PingPongCount(count))
     }
 
 }
