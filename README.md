@@ -19,29 +19,35 @@ UI animation approaches generally fall into three paradigms, each with distinct 
 `gpui_animotion` bridges these paradigms for GPUI by pairing **closed-form analytical segment pipelines** with **fluent, combinator-driven element animation**.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Track<T> Pipeline                        │
-├─────────────────┬───────────────────┬───────────────────────┤
-│ Segment 1:      │ Segment 2:        │ Segment 3:            │
-│ TweenSegment    │ SpringSegment     │ FlickSegment          │
-│ duration: 0.4s  │ duration: 0.8s    │ duration: 1.1s        │
-└────────┬────────┴─────────┬─────────┴───────────┬───────────┘
-         │                  │                     │
-         ▼                  ▼                     ▼
-   evaluate(t)        evaluate(t)           evaluate(t)
-   velocity(t)        velocity(t)           velocity(t)
-
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             Track<T> Pipeline                               │
+├───────────────────┬─────────────────────────────────┬───────────────────────┤
+│ Segment 1:        │ Segment 2:                      │ Segment 3:            │
+│ HoldSegment (0.4s)│ ConstrainedSegment (Fit 0.8s)   │ TweenSegment (0.5s)   │
+│ [Initial Pause]   │ ├─ Inner: SpringSegment (1.8s)  │ [Eased Return]        │
+│                   │ └─ Scale factor: 1.8 / 0.8      │                       │
+└────────┬──────────┴────────────────┬────────────────┴───────────┬───────────┘
+         │                           │                            │
+         ▼                           ▼                            ▼
+   evaluate(t)                 evaluate(t)                  evaluate(t)
+   velocity(t)                 velocity(t)                  velocity(t)
+                                     │
+                                     ▼
+                     Loop Policy (LoopMode)
+       [Once | LoopForever | Count(n) | PingPong | PingPongCount(n)]
 ```
 
 Instead of maintaining imperative timeline controllers, pre-baking discrete keyframe arrays, or running frame-by-frame numerical integration loops:
 
 * **$\mathcal{O}(1)$ Deterministic Evaluation:** Every motion primitive compiles into a pure, continuous function $f(t) \to \text{Value}$ evaluated in constant time, ensuring frame-rate independence and glitch-free rendering under CPU load.
+* **Temporal Normalization:** Untimed physical equations (springs, friction decays) can be scaled or clamped into strict design-system duration budgets (`.fit_to_duration()`, `.clamp_at_duration()`) without losing their characteristic dynamics.
 * **Declarative Tree Integration:** Composable timing pipelines attach directly to standard GPUI elements via reactive property mappers and fluent combinators, keeping motion co-located with your component layout.
 
 ### Key Features
 
 * **Direct Element Binding:** Animate standard GPUI layout properties, custom canvas properties, and reactive variables directly.
 * **Analytical Physics:** Exact, closed-form solutions for harmonic springs, piecewise parabolic gravity, and kinetic drag—zero Euler integration drift.
+* **Parametric Easing & Bezier Engine:** Complete suite of standard easing transfer functions alongside an analytical 4-point parametric Cubic Bezier root-finder.
 * **Frame-Rate Independent:** Animations evaluate continuously at any refresh rate (60 Hz, 120 Hz, or variable) and support instant random-access timeline scrubbing.
 * **Fluent Chaining:** Easily compose complex sequences combining keyframe `.tween()` transitions and physics algorithms.
 * **Zero Canvas Lock-In:** Works seamlessly across standard GPUI layout elements (`Div`) and custom canvas draw passes.
@@ -111,9 +117,35 @@ fn render_spring_box() -> impl IntoElement {
 }
 ```
 
-### 2. Multi-Body Physics & Custom Canvas (`.animotion_clip`)
+### 2. Choreographed Sequencing with Constraints (`.animotion_clip`)
 
-For complex scenes (like multi-body physics simulations), use `.animotion_clip()` to declare tracked properties, chain analytical trajectories, and render via canvas:
+Compose staggered delays, time-scaled physics, holds, and automatic ping-pong cycles:
+
+
+```rust
+use gpui::*;
+use gpui_animotion::*;
+
+fn render_choreographed_card(c: &mut ClipBuilder) -> Prop<f32> {
+    c.prop(0.0)
+        // 1. Initial 300ms entrance delay
+        .delay(0.30)
+        // 2. High-oscillation spring dilated to complete in exactly 750ms
+        .spring(300.0, SpringParams::from_damping_ratio(140.0, 0.25))
+        .fit_to_duration(0.75)
+        // 3. Pause at destination for 250ms
+        .hold(0.25)
+        // 4. Mirror playback automatically back to origin
+        .ping_pong()
+        .clone()
+}
+
+```
+
+
+### 3. Multi-Body Physics & Custom Canvas (`.animotion_clip`)
+
+For complex scenes and canvas rendering, declare tracked properties, chain analytical trajectories, and render via canvas:
 
 ```rust
 use gpui::*;
@@ -121,14 +153,14 @@ use gpui_animotion::*;
 
 #[derive(Clone)]
 struct BallProps {
-    x: f32,
+    x: Prop<f32>,
     y: Prop<f32>,
     color: Prop<Hsla>,
 }
 
-fn render_spring_marbles(floor_y: f32) -> impl IntoElement {
+fn render_kinetic_marbles(floor_y: f32) -> impl IntoElement {
     div().animotion_clip(
-        ElementId::Name("physics_spring_marbles".into()),
+        ElementId::Name("physics_kinetic_marbles".into()),
         |c| vec![
             // 1. Lively underdamped spring chained into a return bounce
             BallProps {
@@ -173,11 +205,11 @@ fn render_spring_marbles(floor_y: f32) -> impl IntoElement {
                                 fill(
                                     Bounds {
                                         origin,
-                                        size: size(px(60.0), px(60.0)),
+                                        size: size(px(52.0), px(52.0)),
                                     },
                                     ball.color.get(),
                                 )
-                                .corner_radii(Corners::all(px(30.0))),
+                                .corner_radii(Corners::all(px(26.0))),
                             );
                         }
                     },
@@ -187,6 +219,7 @@ fn render_spring_marbles(floor_y: f32) -> impl IntoElement {
         },
     )
 }
+
 ```
 
 ## Core Concepts
@@ -246,24 +279,55 @@ prop.flick(FlickParams {
 * Computes multi-bounce trajectories in $\mathcal{O}(1)$ time without iterative Euler stepping.
 * Eliminates the need to hand-craft bounce parabola keyframes.
 
-### 4. Property Handles (`Prop<T>`)
 
-`Prop<T>` manages animated state across frames:
+### 5. Temporal Constraints (`fit_to_duration`, `clamp_at_duration`)
 
-* **Thread-Safe Sampling:** Backed by thread-safe synchronization primitives (`Arc<Mutex<Track<T>>>`), allowing properties to be sampled with minimal overhead during GPUI layout and paint passes.
+Adapt untimed physical segments into strict layout timelines:
+
+* **`.fit_to_duration(secs)`:** Linearly dilates internal time ($t \cdot \frac{T_{\text{natural}}}{T_{\text{target}}}$), ensuring the full physical curve completes within an exact time budget.
+* **`.clamp_at_duration(secs)`:** Truncates evaluation at the duration cap and snaps directly to resting equilibrium, eliminating long-tail sub-pixel computations.
+
+
+### 6. Choreography & Holds (`delay`, `hold`)
+
+* **`.delay(secs)`:** Injects an identity pause at the start or between segments.
+* **`.hold(secs)`:** Freezes the preceding segment's end value for a set duration before subsequent actions execute.
+
+
+### 7. Playback Policies (`LoopMode`)
+
+Configure how tracks advance, cycle, or terminate:
+
+| Method | Mode | Behavior |
+| --- | --- | --- |
+| `.loop_forever()` | `LoopMode::LoopForever` | Cycles continuously via modulo arithmetic ($t \pmod T$). |
+| `.play_once()` | `LoopMode::Once` | Plays through once and rests at the final value ($t = \min(t_{\text{elapsed}}, T)$). |
+| `.loop_count(n)` | `LoopMode::Count(n)` | Repeats for $n$ complete cycles, then freezes at the destination. |
+| `.ping_pong()` | `LoopMode::PingPong` | Alternates forward and reverse passes continuously without jump cuts. |
+| `.ping_pong_count(n)` | `LoopMode::PingPongCount(n)` | Alternates forward and reverse for $n$ half-cycles, then stops. |
+
+
+### 8. Reactive Property Handles (`Prop<T>`)
+
+* **Thread-Safe Sampling:** Backed by `Arc<Mutex<Track<T>>>`, allowing properties to be sampled concurrently during GPUI layout and paint passes.
 * **Continuous State Inspection:** Access position and instantaneous velocity derivatives ($x(t), \dot{x}(t)$) for momentum preservation across interruptions.
-* **Fluent Builder:** Attach `.tween()`, `.tween_eased()`, `.spring()`, `.flick()`, and `.gravity()` calls directly to the property handle before mounting into the view tree.
+* **Fluent Builder:** Attach `.tween()`, `.tween_eased()`, `.spring()`, `.flick()`, `.gravity()`, constraints, and loop modes directly to property handles.
 
-### 6. Combinators (`all` and `seq`)
 
-Orchestrate how multiple properties or elements execute:
+### 9. Parallel Combinators (`all`)
 
-* **`all(...)`**: Executes wrapped property tracks in parallel concurrently.
-* **`seq(...)`**: Executes wrapped animation tracks sequentially in series *(coming soon)*.
+Orchestrate concurrent properties on a single element:
 
-### 7. Continuous Looping
+* **`all(...)`:** Bundles tuples of property bindings `(prop1, prop2, ...)` into parallel execution tracks on standard GPUI elements.
 
-Animations loop seamlessly when a sequence returns to its initial value. Chaining a physics track with an inverse spring or return `.tween()` guarantees visual continuity across continuous playback cycles.
+
+## Roadmap
+
+* [x] **Phase 1: Analytical Segment Migration** (Closed-form `AnimationSegment` trait, piecewise parabolic gravity).
+* [x] **Phase 2: Kinetic Decay & Easing Suite** (`FlickSegment`, 4-point parametric `CubicBezier`, `Ease` enum, `tween_eased`).
+* [x] **Phase 3: Temporal Constraints & Choreography** (`ConstrainedSegment`, `HoldSegment`, `LoopMode`, `.fit_to_duration`, `.ping_pong`).
+* [ ] **Phase 4: Interactive UI Dynamics & Interruption Continuity** (`Prop::interrupt_to()`, velocity inheritance, GPUI gesture binding helpers).
+* [ ] **Phase 5: Master Timeline & Headless Motion Canvas Mode** (Multi-track orchestration, timeline scrubbers, deterministic headless video exporter).
 
 ## License
 
