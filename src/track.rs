@@ -1,5 +1,5 @@
 use crate::{AnimationSegment, Interpolate};
-use crate::segments::constrained::{ConstrainedSegment, HoldSegment};
+use crate::segments::{ConstrainedSegment, HoldSegment};
 use crate::loop_mode::LoopMode;
 use std::time::Duration;
 use std::fmt::Debug;
@@ -8,6 +8,7 @@ pub struct Track<T> {
     pub initial: T,
     pub segments: Vec<Box<dyn AnimationSegment<T>>>,
     pub loop_mode: LoopMode,
+    pub time_offset: Duration,
 }
 
 impl<T: Clone> Track<T> {
@@ -29,6 +30,7 @@ impl<T: Clone + Interpolate + Send + Sync + Debug + 'static> Track<T> {
             initial,
             segments: Vec::new(),
             loop_mode: LoopMode::default(),
+            time_offset: Duration::ZERO,
         }
     }
 
@@ -38,8 +40,9 @@ impl<T: Clone + Interpolate + Send + Sync + Debug + 'static> Track<T> {
             return self.initial.clone();
         }
 
+        let effective_elapsed = elapsed.saturating_sub(self.time_offset);
         let total = self.total_duration();
-        let local_elapsed = self.loop_mode.map_time(elapsed, total);
+        let local_elapsed = self.loop_mode.map_time(effective_elapsed, total);
 
         let mut accumulated = Duration::ZERO;
         for segment in &self.segments {
@@ -60,8 +63,9 @@ impl<T: Clone + Interpolate + Send + Sync + Debug + 'static> Track<T> {
             return (self.initial.clone(), self.initial.clone());
         }
 
+        let effective_elapsed = elapsed.saturating_sub(self.time_offset);
         let total = self.total_duration();
-        let local_elapsed = self.loop_mode.map_time(elapsed, total);
+        let local_elapsed = self.loop_mode.map_time(effective_elapsed, total);
 
         let mut accumulated = Duration::ZERO;
         for segment in &self.segments {
@@ -75,6 +79,11 @@ impl<T: Clone + Interpolate + Send + Sync + Debug + 'static> Track<T> {
 
         let last = self.segments.last().unwrap();
         (last.end_value(), last.velocity(last.duration()))
+    }
+
+    pub fn with_time_offset(mut self, offset: Duration) -> Self {
+        self.time_offset = offset;
+        self
     }
 
     /// Fits the most recently appended segment into an exact duration by scaling its timeline.

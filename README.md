@@ -6,7 +6,7 @@
 
 A declarative, combinator-driven procedural animation engine for [GPUI](https://github.com/zed-industries/zed).
 
-Inspired by the procedural composition of tools like **Motion Canvas** and the timing orchestration of **GSAP**, `gpui_animotion` brings fine-grained timeline control and physical simulations directly to native Rust UI components.
+Inspired by the procedural composition of **Motion Canvas** and the timeline orchestration of **GSAP**, `gpui_animotion` brings fine-grained timeline choreography, parametric easing, analytical physical simulations, and momentum-preserving gesture dynamics directly to native Rust UI components.
 
 ## Overview & Paradigm
 
@@ -35,11 +35,13 @@ UI animation approaches generally fall into three paradigms, each with distinct 
                                      ▼
                      Loop Policy (LoopMode)
        [Once | LoopForever | Count(n) | PingPong | PingPongCount(n)]
+
 ```
 
 Instead of maintaining imperative timeline controllers, pre-baking discrete keyframe arrays, or running frame-by-frame numerical integration loops:
 
 * **$\mathcal{O}(1)$ Deterministic Evaluation:** Every motion primitive compiles into a pure, continuous function $f(t) \to \text{Value}$ evaluated in constant time, ensuring frame-rate independence and glitch-free rendering under CPU load.
+* **$C^1$ Continuity Interruption:** Interrupt running animations mid-flight without positional snaps or lost momentum; new targets automatically inherit instantaneous velocity vectors ($\dot{x}(t)$).
 * **Temporal Normalization:** Untimed physical equations (springs, friction decays) can be scaled or clamped into strict design-system duration budgets (`.fit_to_duration()`, `.clamp_at_duration()`) without losing their characteristic dynamics.
 * **Declarative Tree Integration:** Composable timing pipelines attach directly to standard GPUI elements via reactive property mappers and fluent combinators, keeping motion co-located with your component layout.
 
@@ -48,9 +50,13 @@ Instead of maintaining imperative timeline controllers, pre-baking discrete keyf
 * **Direct Element Binding:** Animate standard GPUI layout properties, custom canvas properties, and reactive variables directly.
 * **Analytical Physics:** Exact, closed-form solutions for harmonic springs, piecewise parabolic gravity, and kinetic drag—zero Euler integration drift.
 * **Parametric Easing & Bezier Engine:** Complete suite of standard easing transfer functions alongside an analytical 4-point parametric Cubic Bezier root-finder.
-* **Frame-Rate Independent:** Animations evaluate continuously at any refresh rate (60 Hz, 120 Hz, or variable) and support instant random-access timeline scrubbing.
-* **Fluent Chaining:** Easily compose complex sequences combining keyframe `.tween()` transitions and physics algorithms.
+* **Temporal Constraints & Choreography:** Dilate physical trajectories into exact millisecond budgets, inject identity holds/delays, and configure playback cycling policies.
+* **Interactive Momentum Continuity:** Hot-swap running animation targets mid-flight (`interrupt_spring`, `interrupt_flick`, `interrupt_tween`) with full velocity preservation.
+* **Gesture Velocity Tracking:** Built-in 1D and 2D least-squares regression velocity trackers (`VelocityTracker`, `VelocityTracker2D`) to capture pointer exit momentum for realistic throws and flicks.
+* **Frame-Rate Independent:** Animations evaluate continuously at any refresh rate (**60 Hz**, **120 Hz**, or variable) and support instant random-access timeline scrubbing.
+* **Fluent Chaining:** Easily compose complex sequences combining keyframe transitions, easing modifiers, and physical trajectories.
 * **Zero Canvas Lock-In:** Works seamlessly across standard GPUI layout elements (`Div`) and custom canvas draw passes.
+
 
 ## Installation
 
@@ -60,15 +66,22 @@ Add `gpui_animotion` and `gpui` to your `Cargo.toml`:
 [dependencies]
 gpui = { package = "gpui-unofficial", version = "1.16" }
 gpui_animotion = "0.4"
+
 ```
 
 ## Quickstart
 
-Clone the repository and run the included example:
+Clone the repository and run the included examples:
 
 ```bash
 git clone https://github.com/astrimid/gpui_animotion.git
 cd gpui_animotion
+
+# Run the interactive mouse drag, fling, and spring-snap demo
+cargo run --example interactive_throw
+
+# Run the temporal choreography and constraints showcase
+cargo run --example choreography_showcase
 
 # Run the multi-primitive kinetic sandbox
 cargo run --example kinetic_marble_playground
@@ -78,11 +91,12 @@ cargo run --example easing_bezier_showcase
 
 # Run the multi-ball gravity simulation
 cargo run --example many_shiny_balls
+
 ```
 
 ## Usage Examples
 
-### 1. Spring & Tween Inline Animation (`.animotion`)
+### 1. Spring, Easing & Tween Inline Animation (`.animotion`)
 
 For standard UI components, use `.animotion()` to declaratively map transitions directly onto standard `Div` attributes:
 
@@ -99,28 +113,28 @@ fn render_spring_box() -> impl IntoElement {
         .animotion(
             "spring_box",
             all((
-                // X-axis: Analytical spring to 200px, then smooth tween back to 0px
+                // X-axis: Analytical spring to 200px, then smooth eased return
                 prop(
                     spring(0.0, 200.0, SpringParams::from_damping_ratio(250.0, 0.55))
                         .tween_eased(0.0, 0.6, Ease::OutCubic),
                     |el, x| el.left(px(x)),
                 ),
-                // Concurrently pulse scale/opacity
+                // Concurrently pulse scale/opacity with custom Bezier overshoot
                 prop(
                     tween(0.8, 1.1, 0.4)
                         .ease(Ease::Custom(0.68, -0.55, 0.27, 1.55))
                         .tween_eased(0.8, 0.6, Ease::InOutQuad),
-                    |el, s| el.opacity(s),
+                    |el, s| el.scale(s),
                 ),
             )),
         )
 }
+
 ```
 
 ### 2. Choreographed Sequencing with Constraints (`.animotion_clip`)
 
 Compose staggered delays, time-scaled physics, holds, and automatic ping-pong cycles:
-
 
 ```rust
 use gpui::*;
@@ -142,8 +156,64 @@ fn render_choreographed_card(c: &mut ClipBuilder) -> Prop<f32> {
 
 ```
 
+### 3. Interactive Gesture Fling & Spring Snap (`interrupt_*`)
 
-### 3. Multi-Body Physics & Custom Canvas (`.animotion_clip`)
+Capture live mouse drag movements, compute exit fling velocities via regression, and smoothly reel the element back to its dock:
+
+```rust
+use gpui::*;
+use gpui_animotion::*;
+
+struct DraggableView {
+    pos_x: Prop<f32>,
+    pos_y: Prop<f32>,
+    tracker: VelocityTracker2D,
+}
+
+impl DraggableView {
+    fn on_drag(&mut self, current_pos: Point<f32>, cx: &mut Context<Self>) {
+        self.tracker.push(current_pos.x, current_pos.y);
+        // Direct tracking without lag
+        self.pos_x.interrupt_tween(current_pos.x, 0.001, Ease::Linear);
+        self.pos_y.interrupt_tween(current_pos.y, 0.001, Ease::Linear);
+        cx.notify();
+    }
+
+    fn on_release(&mut self, home_x: f32, home_y: f32, cx: &mut Context<Self>) {
+        let (vx, vy) = self.tracker.velocity();
+        let speed = (vx * vx + vy * vy).sqrt();
+
+        if speed > 100.0 {
+            // Ballistic throw: friction glide inherits exit velocity, then springs back
+            self.pos_x
+                .interrupt_flick(FlickParams {
+                    initial_velocity: vx,
+                    friction: 3.5,
+                    threshold: 1.0,
+                    duration: None,
+                })
+                .spring(home_x, SpringParams::from_damping_ratio(160.0, 0.50));
+
+            self.pos_y
+                .interrupt_flick(FlickParams {
+                    initial_velocity: vy,
+                    friction: 3.5,
+                    threshold: 1.0,
+                    duration: None,
+                })
+                .spring(home_y, SpringParams::from_damping_ratio(160.0, 0.50));
+        } else {
+            // Gentle release: direct spring snap to home
+            self.pos_x.interrupt_spring(home_x, SpringParams::from_damping_ratio(180.0, 0.60));
+            self.pos_y.interrupt_spring(home_y, SpringParams::from_damping_ratio(180.0, 0.60));
+        }
+        cx.notify();
+    }
+}
+
+```
+
+### 4. Multi-Body Physics & Custom Canvas (`.animotion_clip`)
 
 For complex scenes and canvas rendering, declare tracked properties, chain analytical trajectories, and render via canvas:
 
@@ -226,21 +296,22 @@ fn render_kinetic_marbles(floor_y: f32) -> impl IntoElement {
 
 ### 1. Keyframing, Tweens & Easing (`tween`, `tween_eased`, `Ease`)
 
-Tweens linearly or non-linearly interpolate property values across durations. Interpolation is implemented natively for `f32`, `Hsla`, `Rgba`, and GPUI geometry primitives:
+Tweens interpolate property values across durations linearly or via transfer functions. Supported natively for `f32`, `Hsla`, `Rgba`, and GPUI geometry primitives:
 
-* **Sequential Chaining:** Chain multiple calls together to build multi-step paths (`tween(0.0, 100.0, 0.5).tween(50.0, 0.3)`).
+* **Sequential Chaining:** Chain calls together to build multi-step paths (`tween(0.0, 100.0, 0.5).tween(50.0, 0.3)`).
 * **Fluent Easing Modifiers:** Apply non-linear transfer curves using `.ease(Ease)` or `.tween_eased(target, secs, ease)`.
-* **Standard Presets:** `Linear`, `InQuad`, `OutQuad`, `InOutQuad`, `InCubic`, `OutCubic`, `InOutCubic`, `InExpo`, `OutExpo`, `InOutExpo`, `InBack`, `OutBack`, `InOutBack`, `OutBounce`, `InBounce`, `InOutBounce`.
+* **Standard Presets:** `Linear`, `InQuad`, `OutQuad`, `InOutQuad`, `InCubic`, `OutCubic`, `InOutCubic`, `InExpo`, `OutExpo`, `InOutExpo`, `InBack`, `OutBack`, `InOutBack`, `OutBounce`, `InBounce`, `InOutBounce`, and CSS presets (`CssEase`, `CssEaseIn`, `CssEaseOut`, `CssEaseInOut`).
 * **Parametric 4-Point Cubic Bezier:** Solve exact CSS-style curves using `Ease::Custom(x1, y1, x2, y2)` with Newton-Raphson root finding:
 
 ```rust
 // Custom overshoot and anticipation curve
 prop.tween_eased(300.0, 0.8, Ease::Custom(0.68, -0.60, 0.32, 1.60));
+
 ```
 
-### 2. Analytical Spring Physics (`spring`)
+### 2. Analytical Spring Physics (`spring`, `SpringParams`)
 
-Spring tracks solve the differential equations of a damped harmonic oscillator ($m\ddot{x} + c\dot{x} + kx = 0$) in closed form, providing smooth motion without numerical integration or frame-rate dependency:
+Spring tracks solve the differential equations of a damped harmonic oscillator ($m\ddot{x} + c\dot{x} + kx = 0$) in closed form:
 
 * **`SpringParams`:** Configure mass ($m$), stiffness ($k$), damping ($c$), initial velocity ($v_0$), and settling threshold ($\epsilon$).
 * **Damping Ratio Helper (`SpringParams::from_damping_ratio(stiffness, zeta)`):**
@@ -248,21 +319,19 @@ Spring tracks solve the differential equations of a damped harmonic oscillator (
 * $\zeta = 1.0$: **Critically Damped** (fastest settlement without overshoot).
 * $\zeta > 1.0$: **Overdamped** (friction-dominated smooth settle).
 
-* **Analytical Duration Solving:** The natural resting duration is calculated analytically using logarithmic decay envelopes, or can be bounded by an explicit duration cap.
 
-```rust
-// Chain an elastic underdamped bounce into a tight settle
-prop.spring(300.0, SpringParams::from_damping_ratio(200.0, 0.35))
-    .spring(0.0, SpringParams::from_damping_ratio(180.0, 0.70));
-```
+* **Analytical Duration Solving:** Natural lifespan is calculated analytically using logarithmic decay envelopes.
 
 ### 3. Kinetic Friction Decay (`flick`, `FlickParams`)
 
 Flick tracks model Newtonian drag deceleration ($\dot{v} = -cv$) with closed-form position and velocity evaluation:
 
 * **Gesture Integration:** Pipe finger or cursor release velocity directly into `initial_velocity`.
-* **Automatic Duration:** Computes the exact millisecond velocity drops below the resting threshold ($T_{\text{settle}} = \frac{\ln(\vert{}v_0\vert{} / \epsilon)}{c}$).
-* **Timed Override:** Provide an optional duration to have the engine calculate the matching friction coefficient automatically.
+* **Automatic Duration:** Computes the exact timestamp velocity drops below the resting threshold:
+
+$$T_{\text{settle}} = \frac{\ln(\vert{}v_0\vert{} / \epsilon)}{c}$$
+
+* **Timed Override:** Provide an explicit duration to have the engine calculate the matching friction coefficient automatically.
 
 ```rust
 prop.flick(FlickParams {
@@ -271,14 +340,13 @@ prop.flick(FlickParams {
     threshold: 0.5,
     duration: None,
 });
+
 ```
 
 ### 4. Piecewise Parabolic Gravity (`gravity`, `GravityParams`)
 
-* **`gravity(...)`:** Solves ballistic flight arcs and floor collisions analytically using exact kinematic equations ($y(t) = y_0 + v_0 t + \frac{1}{2} g t^2$) and restitution coefficients.
+* **`gravity(...)`:** Solves ballistic flight arcs and floor collisions analytically using kinematic equations ($y(t) = y_0 + v_0 t + \frac{1}{2} g t^2$) and restitution coefficients.
 * Computes multi-bounce trajectories in $\mathcal{O}(1)$ time without iterative Euler stepping.
-* Eliminates the need to hand-craft bounce parabola keyframes.
-
 
 ### 5. Temporal Constraints (`fit_to_duration`, `clamp_at_duration`)
 
@@ -287,12 +355,10 @@ Adapt untimed physical segments into strict layout timelines:
 * **`.fit_to_duration(secs)`:** Linearly dilates internal time ($t \cdot \frac{T_{\text{natural}}}{T_{\text{target}}}$), ensuring the full physical curve completes within an exact time budget.
 * **`.clamp_at_duration(secs)`:** Truncates evaluation at the duration cap and snaps directly to resting equilibrium, eliminating long-tail sub-pixel computations.
 
-
 ### 6. Choreography & Holds (`delay`, `hold`)
 
 * **`.delay(secs)`:** Injects an identity pause at the start or between segments.
 * **`.hold(secs)`:** Freezes the preceding segment's end value for a set duration before subsequent actions execute.
-
 
 ### 7. Playback Policies (`LoopMode`)
 
@@ -306,27 +372,51 @@ Configure how tracks advance, cycle, or terminate:
 | `.ping_pong()` | `LoopMode::PingPong` | Alternates forward and reverse passes continuously without jump cuts. |
 | `.ping_pong_count(n)` | `LoopMode::PingPongCount(n)` | Alternates forward and reverse for $n$ half-cycles, then stops. |
 
+### 8. Interactive Dynamics & Interruption Continuity
 
-### 8. Reactive Property Handles (`Prop<T>`)
+When users interact with elements already in motion, restarting an animation from scratch resets velocity to zero, causing jarring visual kinks ($C^1$ discontinuities). `Prop<T>` provides continuity-preserving interruption APIs:
 
-* **Thread-Safe Sampling:** Backed by `Arc<Mutex<Track<T>>>`, allowing properties to be sampled concurrently during GPUI layout and paint passes.
-* **Continuous State Inspection:** Access position and instantaneous velocity derivatives ($x(t), \dot{x}(t)$) for momentum preservation across interruptions.
-* **Fluent Builder:** Attach `.tween()`, `.tween_eased()`, `.spring()`, `.flick()`, `.gravity()`, constraints, and loop modes directly to property handles.
+* **`prop.interrupt_spring(target, params)`:** Clears pending segments and creates a new spring to `target`, automatically inheriting running velocity ($v_0 = \dot{x}_{\text{current}}$).
+* **`prop.interrupt_flick(params)`:** Redirects current motion into an exponential deceleration glide.
+* **`prop.interrupt_tween(target, secs, ease)`:** Retargets the property via an eased transition starting from current coordinates.
+* **`prop.stop()`:** Freezes the property instantly at current position, resetting velocity to zero.
 
+### 9. Gesture Velocity Tracking (`VelocityTracker`, `VelocityTracker2D`)
 
-### 9. Parallel Combinators (`all`)
+Accurately measures release momentum for drag, throw, and swipe interactions:
+
+* **Least-Squares Linear Regression:** Analyzes pointer movements across a sliding temporal window (**100–150 ms**) to eliminate noisy single-frame pointer jitter.
+* **Stale Motion Detection:** Detects if the pointer halted before button release and gracefully zeroes exit velocity.
+
+```rust
+let mut tracker = VelocityTracker2D::default();
+
+// On pointer move:
+tracker.push(x, y);
+
+// On pointer release:
+let (vx, vy) = tracker.velocity(); // pixels per second
+
+```
+
+### 10. Reactive Property Handles (`Prop<T>`)
+
+* **Thread-Safe Sampling:** Backed by thread-safe synchronization primitives (`Arc<Mutex<Track<T>>>`), allowing properties to be sampled concurrently during GPUI layout and paint passes.
+* **Continuous State Inspection:** Access position (`.get()`) and instantaneous velocity derivatives (`.velocity()`) at any frame.
+* **External Handle Attachment:** Attach pre-existing properties into clip pipelines using `builder.attach(&prop)`.
+
+### 11. Parallel Combinators (`all`)
 
 Orchestrate concurrent properties on a single element:
 
 * **`all(...)`:** Bundles tuples of property bindings `(prop1, prop2, ...)` into parallel execution tracks on standard GPUI elements.
-
 
 ## Roadmap
 
 * [x] **Phase 1: Analytical Segment Migration** (Closed-form `AnimationSegment` trait, piecewise parabolic gravity).
 * [x] **Phase 2: Kinetic Decay & Easing Suite** (`FlickSegment`, 4-point parametric `CubicBezier`, `Ease` enum, `tween_eased`).
 * [x] **Phase 3: Temporal Constraints & Choreography** (`ConstrainedSegment`, `HoldSegment`, `LoopMode`, `.fit_to_duration`, `.ping_pong`).
-* [ ] **Phase 4: Interactive UI Dynamics & Interruption Continuity** (`Prop::interrupt_to()`, velocity inheritance, GPUI gesture binding helpers).
+* [x] **Phase 4: Interactive UI Dynamics & Interruption Continuity** (`Prop::interrupt_*`, velocity inheritance, `VelocityTracker`, `VelocityTracker2D`).
 * [ ] **Phase 5: Master Timeline & Headless Motion Canvas Mode** (Multi-track orchestration, timeline scrubbers, deterministic headless video exporter).
 
 ## License

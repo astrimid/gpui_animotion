@@ -12,6 +12,9 @@ mod tween;
 mod segment;
 mod segments;
 mod loop_mode;
+mod gesture;
+
+pub use gesture::{VelocityTracker, VelocityTracker2D};
 
 pub use element::{AnimotionElement, AnimotionExt};
 pub use property::{all, prop, Prop, PropertyTrack, Animatable};
@@ -24,7 +27,7 @@ pub use easing::tween_eased;
 pub use segments::{Ease, CubicBezier};
 
 pub use segment::AnimationSegment;
-pub use segments::constrained::{ConstrainedSegment, ConstraintMode, HoldSegment};
+pub use segments::{ConstrainedSegment, ConstraintMode, HoldSegment};
 pub use interpolate::Interpolate;
 pub use track::Track;
 pub use loop_mode::LoopMode;

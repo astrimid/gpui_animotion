@@ -84,4 +84,17 @@ impl ClipBuilder {
     pub fn build(self) -> Vec<Box<dyn PropertyTrack>> {
         self.tracks
     }
+
+    /// Registers a pre-existing Prop to receive frame updates from the clip's render loop.
+    pub fn attach<T: Clone + Interpolate + Send + Sync + Debug + 'static>(
+        &mut self,
+        prop: &Prop<T>,
+    ) -> Prop<T> {
+        let prop_clone = prop.clone();
+        let value = prop_clone.clone();
+        self.prop_updaters
+            .push(Box::new(move |elapsed| value.update(elapsed)));
+
+        prop_clone
+    }
 }

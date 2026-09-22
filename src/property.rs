@@ -43,6 +43,8 @@ pub fn prop<T: Clone + Interpolate + Send + Sync + Debug + 'static>(
 pub struct Prop<T> {
     pub track: Arc<Mutex<Track<T>>>,
     pub current_value: Arc<Mutex<T>>,
+    pub current_velocity: Arc<Mutex<T>>,
+    pub last_elapsed: Arc<Mutex<Duration>>,
 }
 
 impl<T: Clone + Interpolate + Send + Sync + Debug + 'static> Prop<T> {
@@ -50,7 +52,9 @@ impl<T: Clone + Interpolate + Send + Sync + Debug + 'static> Prop<T> {
     pub fn new(initial: T) -> Self {
         Self {
             track: Arc::new(Mutex::new(Track::new(initial.clone()))),
-            current_value: Arc::new(Mutex::new(initial)),
+            current_value: Arc::new(Mutex::new(initial.clone())),
+            current_velocity: Arc::new(Mutex::new(initial.clone())),
+            last_elapsed: Arc::new(Mutex::new(Duration::ZERO)),
         }
     }
 
@@ -59,7 +63,9 @@ impl<T: Clone + Interpolate + Send + Sync + Debug + 'static> Prop<T> {
         let initial = track.initial.clone();
         Self {
             track: Arc::new(Mutex::new(track)),
-            current_value: Arc::new(Mutex::new(initial)),
+            current_value: Arc::new(Mutex::new(initial.clone())),
+            current_velocity: Arc::new(Mutex::new(initial.clone())),
+            last_elapsed: Arc::new(Mutex::new(Duration::ZERO)),
         }
     }
 
@@ -68,11 +74,38 @@ impl<T: Clone + Interpolate + Send + Sync + Debug + 'static> Prop<T> {
         self.current_value.lock().unwrap().clone()
     }
 
-    /// Samples the track at elapsed time and updates the cached value.
+    /// Samples the track at `elapsed` time and updates cached value and velocity derivatives.
     pub fn update(&self, elapsed: Duration) {
         let track = self.track.lock().unwrap();
-        let sampled = track.sample(elapsed);
-        *self.current_value.lock().unwrap() = sampled;
+        let (sampled_val, sampled_vel) = track.sample_state(elapsed);
+        *self.current_value.lock().unwrap() = sampled_val;
+        *self.current_velocity.lock().unwrap() = sampled_vel;
+        *self.last_elapsed.lock().unwrap() = elapsed;
+    }
+
+
+    /// Returns the current instantaneous velocity derivative of the property.
+    pub fn velocity(&self) -> T {
+        self.current_velocity.lock().unwrap().clone()
+    }
+
+    /// Redirects a running animation mid-flight to a new target using an eased tween.
+    pub fn interrupt_tween(&self, target: T, secs: f32, ease: Ease) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        let last_elapsed = *self.last_elapsed.lock().unwrap();
+        let (cur_val, cur_vel) = track.sample_state(last_elapsed);
+
+        track.segments.clear();
+        track.initial = cur_val.clone();
+        track.time_offset = last_elapsed;
+        track.loop_mode = LoopMode::Once;
+        track.segments.push(Box::new(
+            TweenSegment::new(cur_val.clone(), target, Duration::from_secs_f32(secs)).with_ease(ease),
+        ));
+
+        *self.current_value.lock().unwrap() = cur_val;
+        *self.current_velocity.lock().unwrap() = cur_vel;
+        self
     }
 }
 
@@ -207,6 +240,65 @@ impl Prop<f32> {
         let mut track = self.track.lock().unwrap();
         let start = track.current_end_value();
         track.segments.push(Box::new(FlickSegment::new(start, params)));
+        self
+    }
+
+    /// Redirects a running numeric animation mid-flight to a new target using an analytical spring.
+    /// Preserves instantaneous velocity ($v_0 = \dot{x}_{\text{current}}$) for $C^1$ continuity.
+    pub fn interrupt_spring(&self, target: f32, mut params: SpringParams) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        let last_elapsed = *self.last_elapsed.lock().unwrap();
+        let (cur_val, cur_vel) = track.sample_state(last_elapsed);
+
+        // Inherit running momentum
+        params.initial_velocity = cur_vel;
+
+        track.segments.clear();
+        track.initial = cur_val;
+        track.time_offset = last_elapsed;
+        track.loop_mode = LoopMode::Once;
+        track.segments.push(Box::new(SpringSegment::new(cur_val, target, params)));
+
+        *self.current_value.lock().unwrap() = cur_val;
+        *self.current_velocity.lock().unwrap() = cur_vel;
+        self
+    }
+
+    /// Interrupts a running animation with an inertial flick decay.
+    /// If `params.initial_velocity == 0.0`, running velocity is inherited automatically.
+    pub fn interrupt_flick(&self, mut params: FlickParams) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        let last_elapsed = *self.last_elapsed.lock().unwrap();
+        let (cur_val, cur_vel) = track.sample_state(last_elapsed);
+
+        if params.initial_velocity == 0.0 {
+            params.initial_velocity = cur_vel;
+        }
+
+        track.segments.clear();
+        track.initial = cur_val;
+        track.time_offset = last_elapsed;
+        track.loop_mode = LoopMode::Once;
+        track.segments.push(Box::new(FlickSegment::new(cur_val, params)));
+
+        *self.current_value.lock().unwrap() = cur_val;
+        *self.current_velocity.lock().unwrap() = cur_vel;
+        self
+    }
+
+    /// Instantly halts movement at current position with zero velocity.
+    pub fn stop(&self) -> &Self {
+        let mut track = self.track.lock().unwrap();
+        let last_elapsed = *self.last_elapsed.lock().unwrap();
+        let cur_val = track.sample(last_elapsed);
+
+        track.segments.clear();
+        track.initial = cur_val;
+        track.time_offset = last_elapsed;
+        track.loop_mode = LoopMode::Once;
+
+        *self.current_value.lock().unwrap() = cur_val;
+        *self.current_velocity.lock().unwrap() = 0.0;
         self
     }
 }
