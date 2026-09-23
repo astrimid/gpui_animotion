@@ -1,6 +1,6 @@
 [package]
 name = "gpui_animotion"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 description = "Declarative property animation engine for GPUI"
 repository = "https://github.com/astrimid/gpui_animotion"

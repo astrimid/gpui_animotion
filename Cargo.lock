@@ -2354,7 +2354,7 @@ dependencies = [
 
 [[package]]
 name = "gpui_animotion"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "gpui-platform-gpui-unofficial",
  "gpui-unofficial",
