@@ -1,7 +1,11 @@
 use crate::interpolate::Interpolate;
 use crate::property::{Prop, PropertyTrack};
 use crate::track::Track;
+use crate::IntoSeqGroup;
+use crate::MasterTimeline;
+use crate::LoopMode;
 use gpui::Div;
+use std::sync::{Arc, Mutex};
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -96,5 +100,37 @@ impl ClipBuilder {
             .push(Box::new(move |elapsed| value.update(elapsed)));
 
         prop_clone
+    }
+
+    /// Automatically sequences properties back-to-back and drives their playback.
+    pub fn seq(&mut self, group: impl IntoSeqGroup) {
+        let mut timeline = MasterTimeline::new();
+        group.add_to_timeline(Duration::ZERO, &mut timeline);
+    
+        // Auto-loop by default for clips
+        timeline.set_loop_mode(LoopMode::LoopForever);
+    
+        let timeline = Arc::new(Mutex::new(timeline));
+    
+        // Evaluate playhead directly using GPUI's elapsed duration
+        self.prop_updaters.push(Box::new(move |elapsed| {
+            let mut tm = timeline.lock().unwrap();
+            tm.seek(elapsed);
+        }));
+    }
+
+    pub fn timeline(&mut self, timeline: Arc<Mutex<MasterTimeline>>) {
+        let last_time = Arc::new(Mutex::new(None));
+        self.prop_updaters.push(Box::new(move |_elapsed| {
+            let now = std::time::Instant::now();
+            let dt = {
+                let mut last = last_time.lock().unwrap();
+                let prev = last.unwrap_or(now);
+                *last = Some(now);
+                now.duration_since(prev)
+            };
+            let mut tm = timeline.lock().unwrap();
+            tm.advance(dt);
+        }));
     }
 }

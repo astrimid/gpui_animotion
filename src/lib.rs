@@ -11,6 +11,7 @@ mod gravity;
 mod tween;
 mod segment;
 mod segments;
+mod timeline;
 mod loop_mode;
 mod gesture;
 
@@ -33,3 +34,7 @@ pub use track::Track;
 pub use loop_mode::LoopMode;
 pub use clip::ClipBuilder;
 pub use clip_ext::AnimotionClipExt;
+
+pub use timeline::{
+    seq, BoundTrack, IntoSeqGroup, IntoSeqItem, MasterTimeline, TimelineScrubber, TimelineTrack,
+};

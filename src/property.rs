@@ -4,10 +4,10 @@ use crate::segments::{TweenSegment, SpringSegment, GravitySegment, FlickSegment}
 use crate::segments::{ConstrainedSegment, HoldSegment};
 use crate::track::Track;
 use gpui::Div;
-use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use crate::LoopMode;
+use std::fmt::{self, Debug};
 
 /// Trait for applying animated properties to GPUI elements.
 pub trait PropertyTrack: Send + Sync {
@@ -45,6 +45,20 @@ pub struct Prop<T> {
     pub current_value: Arc<Mutex<T>>,
     pub current_velocity: Arc<Mutex<T>>,
     pub last_elapsed: Arc<Mutex<Duration>>,
+}
+
+impl<T: Debug> Debug for Prop<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let cur = self.current_value.try_lock().ok().map(|v| format!("{:?}", *v));
+        let vel = self.current_velocity.try_lock().ok().map(|v| format!("{:?}", *v));
+        let elapsed = self.last_elapsed.try_lock().ok().map(|g| *g);
+
+        f.debug_struct("Prop")
+            .field("current_value", &cur)
+            .field("current_velocity", &vel)
+            .field("last_elapsed", &elapsed)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<T: Clone + Interpolate + Send + Sync + Debug + 'static> Prop<T> {
